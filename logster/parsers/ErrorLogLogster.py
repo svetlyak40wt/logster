@@ -9,23 +9,30 @@
 import time
 import re
 
+from collections import defaultdict
 from logster.logster_helper import MetricObject, LogsterParser
 from logster.logster_helper import LogsterParsingException
 
+
 class ErrorLogLogster(LogsterParser):
 
-    def __init__(self, option_string=None):
+    def __init__(self,
+                 option_string=None,
+                 regexp='^\[[^]]+\] \[(?P<loglevel>\w+)\] .*',
+                 levels=('notice', 'warn', 'error', 'crit'),
+                 prefix='',
+                 num_seconds=10):
         '''Initialize any data structures or variables needed for keeping track
         of the tasty bits we find in the log we are parsing.'''
-        self.notice = 0
-        self.warn = 0
-        self.error = 0
-        self.crit = 0
-        self.other = 0
+        self.counters = defaultdict(int)
+        self.levels = set(levels)
+        self.prefix = prefix
+        self.num_seconds = num_seconds
+        self.units = 'Logs per {0} sec'.format(num_seconds)
         
         # Regular expression for matching lines we are interested in, and capturing
         # fields from the line
-        self.reg = re.compile('^\[[^]]+\] \[(?P<loglevel>\w+)\] .*')
+        self.reg = re.compile(regexp)
 
 
     def parse_line(self, line):
@@ -39,17 +46,12 @@ class ErrorLogLogster(LogsterParser):
             if regMatch:
                 linebits = regMatch.groupdict()
                 level = linebits['loglevel']
-
-                if (level == 'notice'):
-                    self.notice += 1
-                elif (level == 'warn'):
-                    self.warn += 1
-                elif (level == 'error'):
-                    self.error += 1
-                elif (level == 'crit'):
-                    self.crit += 1
+                level = level.lower()
+                
+                if level in self.levels:
+                    self.counters[level] += 1
                 else:
-                    self.other += 1
+                    self.counters['other'] += 1
 
             else:
                 raise LogsterParsingException, "regmatch failed to match"
@@ -61,13 +63,11 @@ class ErrorLogLogster(LogsterParser):
     def get_state(self, duration):
         '''Run any necessary calculations on the data collected from the logs
         and return a list of metric objects.'''
-        self.duration = duration / 10
 
-        # Return a list of metrics objects
         return [
-            MetricObject("notice", (self.notice / self.duration), "Logs per 10 sec"),
-            MetricObject("warn", (self.warn / self.duration), "Logs per 10 sec"),
-            MetricObject("error", (self.error / self.duration), "Logs per 10 sec"),
-            MetricObject("crit", (self.crit / self.duration), "Logs per 10 sec"),
-            MetricObject("other", (self.other / self.duration), "Logs per 10 sec"),
+            MetricObject(self.prefix + key,
+                         value / (duration / self.num_seconds),
+                         self.units)
+            for key, value in self.counters.items()
+            if duration > 0
         ]
