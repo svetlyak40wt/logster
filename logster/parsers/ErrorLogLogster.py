@@ -18,7 +18,7 @@ class ErrorLogLogster(LogsterParser):
 
     def __init__(self,
                  option_string=None,
-                 regexp='^\[[^]]+\] \[(?P<loglevel>\w+)\] .*',
+                 regexp='^.*(?P<loglevel>ERROR);.*',
                  levels=('notice', 'warn', 'error', 'crit'),
                  prefix='',
                  num_seconds=10):
